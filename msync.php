@@ -35,7 +35,25 @@ class mSync{
             $this->schema=json_decode(file_get_contents('schema.json'),true);
         }
     }
-
+	
+    public function create_json()
+    {
+        $result=$this->conn->query('SHOW TABLES');
+        $rows = array();
+		while ($row = mysqli_fetch_array($result,MYSQLI_ASSOC)){
+                    $rows[]=$row[key($row)];
+                }
+        $struct=array();
+       
+        foreach($rows as $v)
+        {
+            $res=$this->conn->query('DESCRIBE `'.$v.'`;');	
+            $struct[$v]=$res->fetch_all(MYSQLI_ASSOC);
+        }
+        
+        file_put_contents('schema.json',json_encode($struct,JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+		echo "schema.json updated successfully!";
+    }
 	
     public function db_check()
     {
@@ -277,3 +295,24 @@ class mSync{
     }
 }
 
+if (PHP_SAPI == "cli") {
+	$host=isset($argv[2])&&$argv[2][0]!="-"?trim($argv[2]):"";
+    $mSync = new mSync($host);
+    
+    //force delete
+    if(in_array('-f',$argv))
+        $mSync->is_force_delete=true;
+
+    $mSync->db_check();
+    switch(trim($argv[1])){
+        case "create":
+            $mSync->create_json();
+        break;
+        case "update":
+            $mSync->process();
+        break;	
+        default : 
+            print_r($argv);
+            break;
+    }
+}
