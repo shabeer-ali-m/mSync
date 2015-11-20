@@ -20,9 +20,11 @@ class mSync{
     {
         $this->is_force_delete=false;
         require_once("config.php");
-		if(trim($host)=="")
-			$this->hostname=current($cfg)['host'];
-		else if(isset($cfg[$host]))
+		if(trim($host)==""){
+                    $current_vfg=current($cfg);
+			$this->hostname=$current_vfg['host'];
+                        
+                }else if(isset($cfg[$host]))
 			$this->hostname=$host;
 		else
 			die('Invalid host, Please provide valid host name which you provided in `config.php`!');
@@ -38,7 +40,7 @@ class mSync{
 	
     public function create_json()
     {
-        $result=$this->conn->query('SHOW TABLES');
+        $result=$this->conn->query('SHOW FULL TABLES WHERE Table_type !=  "VIEW"');
         $rows = array();
 		while ($row = mysqli_fetch_array($result,MYSQLI_ASSOC)){
                     $rows[]=$row[key($row)];
@@ -48,7 +50,11 @@ class mSync{
         foreach($rows as $v)
         {
             $res=$this->conn->query('DESCRIBE `'.$v.'`;');	
-            $struct[$v]=$res->fetch_all(MYSQLI_ASSOC);
+			$array = array();
+			while($srow = $res->fetch_assoc())
+				$array[] = $srow;
+            //$struct[$v]=$res->fetch_all(MYSQLI_ASSOC);
+			$struct[$v]=$array;
         }
         
         file_put_contents('schema.json',json_encode($struct,JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
@@ -95,7 +101,7 @@ class mSync{
             foreach($struct as $st=>$s){
                 foreach($cols as $co=>$c){
                     if($st==$co){
-                        $change=array_diff($c,$s);
+                        $change=array_merge(array_diff($c,$s),array_diff($s,$c));
                         if(count($change)>0){
                             $this->alter[$table][$co]=$c;
                         }
@@ -152,7 +158,8 @@ class mSync{
                  }
                 $sql.="`".$c['Field']."` ".$c['Type'].$null.$default.$extra.", ";
             }
-            $sql.=$keys." );";
+            $sql.=$keys;
+            $sql=rtrim($sql,", ")." );";
 			
 			$result=$this->conn->query("SHOW TABLES LIKE  \"$table\"");
 			
@@ -170,7 +177,7 @@ class mSync{
 				}
 			}
         }
-		$result=$this->conn->query("SHOW TABLES FROM ".$this->db);
+		$result=$this->conn->query("SHOW FULL TABLES FROM ".$this->db."  WHERE Table_type != 'VIEW'");
 		while ($row = mysqli_fetch_assoc($result)) {
 			$row=array_values($row);
 			if(!isset($this->schema[$row[0]])){
@@ -184,7 +191,7 @@ class mSync{
                     $line="y";
 
 				if(trim($line)=="y"){
-					$this->conn->query("DROP TABLE ".$row[0]);
+					$this->conn->query("DROP TABLE `".$row[0]."`;");
 					echo "Table deleted : ".$row[0]."\n";
 				}	
 			}	
@@ -198,8 +205,8 @@ class mSync{
         }
         foreach ($tables as $tab=>$col){
             $sql=" ALTER TABLE `$tab`";
-            $keys="";
             foreach ($col as $c){
+                $keys="";
                 if(isset($c['Key']) && $c['Key']!=""){
                     if($c['Key']=="PRI"){
                         $keys.=" PRIMARY KEY  (`".$c['Field']."`) ";   
@@ -207,13 +214,17 @@ class mSync{
                         if($keys!=""){
                             $keys.=", ";
                         }
-                        $keys.=" UNIQUE (`".$c['Field']."`) "; 
+                        $keys.=",ADD UNIQUE (`".$c['Field']."`) "; 
                     }else if($c['Key']=="MUL"){
-                        if($keys!=""){
+                        /*if($keys!=""){
                             $keys.=", ";
-                        }
-                        $keys.=" INDEX (`".$c['Field']."`) ";  
+                        }*/
+                        $keys.=", ADD INDEX (`".$c['Field']."`) ";  
                     }
+                }
+                //if null remove index
+                if(isset($c['Key']) && $c['Key']==""){
+                    $keys=", DROP INDEX `".$c['Field']."`";
                 }
                 $null=" NOT NULL ";
                 if(isset($c['Null'])){
@@ -261,6 +272,7 @@ class mSync{
                     $sql.=" $type `".$c['Field']."` $rename ".$c['Type'].$null.$default.$extra." ";
 					echo "Table : $tab , Added Field : ".$c['Field']."\n";
                 }
+                $sql.=$keys;
                 if(end($col)!=$c){
                     $sql.=", ";
                 }
