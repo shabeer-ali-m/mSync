@@ -35,6 +35,8 @@ class mSync{
         $this->db=$cfg[$this->hostname]['database'];
         if(file_exists('schema.json')){
             $this->schema=json_decode(file_get_contents('schema.json'),true);
+            if($this->schema==null)
+                die("Null schema.json or invalid JSON!");
         }
     }
 	
@@ -224,7 +226,7 @@ class mSync{
                 }
                 //if null remove index
                 if(isset($c['Key']) && $c['Key']==""){
-                    $keys=", DROP INDEX `".$c['Field']."`";
+                    //$keys=", DROP INDEX `".$c['Field']."`";
                 }
                 $null=" NOT NULL ";
                 if(isset($c['Null'])){
